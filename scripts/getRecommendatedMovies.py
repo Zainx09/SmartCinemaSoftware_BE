@@ -13,10 +13,10 @@ movie_collection = db["moviesDB"]
 watched_movie_collection = db["watched_movies"]
 
 def fetch_movies_data():
-    """Fetch movies from movieDB and return genres and movie IDs."""
+    """Fetch now_playing movies from movieDB and return genres and movie IDs."""
     movies = list(movie_collection.find({}, {"id": 1, "genres": 1}))
-    print("Movies ---- \n")
-    print(movies , "\n")
+    # print("Movies ---- \n")
+    # print(movies , "\n")
     movie_ids = [movie["id"] for movie in movies]
     genres = [movie["genres"] for movie in movies]
     return movie_ids, genres
@@ -25,13 +25,19 @@ def build_user_movie_matrix(user_id):
     """Create a user-movie matrix based on watched movies."""
     # Get all movies and watched movies
     movie_ids, genres = fetch_movies_data()
-    watched_movies = list(watched_movie_collection.find({"user_id": user_id}, {"movie_id": 1}))
+    user_watched_obj = watched_movie_collection.find_one({"user_id": user_id})
 
+    watched_movies = []
     print("Watched Movies ---- \n")
+
+    if user_watched_obj:
+        watched_movies = user_watched_obj.get('watchList', [])
+    
     print(watched_movies , "\n")
+    # return
     # Initialize user-movie matrix (binary: 1 if watched, 0 otherwise)
     user_movie_matrix = np.zeros(len(movie_ids))
-    watched_movie_ids = [wm["movie_id"] for wm in watched_movies]
+    watched_movie_ids = [wm["id"] for wm in watched_movies]
     
     # Mark watched movies in user-movie matrix
     for idx, movie_id in enumerate(movie_ids):
@@ -54,8 +60,9 @@ def calculate_genre_similarity_matrix(genres):
     similarity_matrix = cosine_similarity(genre_matrix)
     return similarity_matrix
 
-def get_recommendations(user_id, k=5):
-    """Generate movie recommendations for a given user using KNN."""
+
+def get_recommendations(user_id, k=10, min_similarity=0.2):
+    """Generate movie recommendations for a given user using KNN with a minimum similarity threshold."""
     user_movie_matrix, movie_ids, genres = build_user_movie_matrix(user_id)
     similarity_matrix = calculate_genre_similarity_matrix(genres)
     
@@ -66,77 +73,51 @@ def get_recommendations(user_id, k=5):
     recommended_movies = set()
     
     for idx in watched_indices:
-        # Find k most similar movies for each watched movie
+        # Find similar movies for each watched movie
         similar_indices = np.argsort(-similarity_matrix[idx])  # Sort by descending similarity
         count = 0
         for similar_idx in similar_indices:
+            # Break if recommended movie count reaches k
             if count >= k:
                 break
-            # Only recommend movies that the user hasn't watched
-            if user_movie_matrix[similar_idx] == 0 and similar_idx not in recommended_movies:
+            
+            # Only recommend movies that the user hasn't watched and meet similarity threshold
+            if (user_movie_matrix[similar_idx] == 0 and 
+                similar_idx not in recommended_movies and 
+                similarity_matrix[idx][similar_idx] >= min_similarity):
+                
                 recommended_movies.add(movie_ids[similar_idx])
                 count += 1
     
     # Fetch recommended movies details
-    recommended_movies_details = list(movie_collection.find({"id": {"$in": list(recommended_movies)}}))
+    recommended_movies_details = list(movie_collection.find({"id": {"$in": list(recommended_movies)}, "now_playing": True}))
     return recommended_movies_details
 
+def main(userId=""):
+    try:
+        if userId is None or userId == "":
+            print(userId)
+            return
+        # Convert user_id to ObjectId for MongoDB
+        user_oid = ObjectId(userId)
+        recommended_movies = get_recommendations(user_oid)
+        recommended_movies_list = []
+        if(recommended_movies):
 
-
-try:
-    # Convert user_id to ObjectId for MongoDB
-    user_oid = ObjectId("671851c4fcc86bd7fdca568f")
-    recommended_movies = get_recommendations(user_oid)
+            for movie in recommended_movies:
+                recommended_movies_list.append(
+                    {
+                        "title": movie["title"],
+                        "genres": movie["genres"],
+                        "poster_path" : movie['poster_path'],
+                        "overview" : movie['overview'],
+                        "release_date" : movie['release_date'],
+                        "runtime" : movie['runtime'],
+                        "vote_average" : movie['vote_average'],
+                        "id" : movie['id'],
+                    })
     
-    # Format the recommended movies for the response
-    recommended_movies_list = [
-        {
-            "title": movie["title"],
-            "genres": movie["genres"],
-            # "poster_path": movie["poster_path"],
-            # "release_date": movie["release_date"],
-            # "runtime": movie["runtime"],
-            # "vote_average": movie["vote_average"]
-        }
-        for movie in recommended_movies
-    ]
- 
-    print(recommended_movies_list)
-except Exception as e:
-    print("Error ---- " , e)
-
-# Flask API to get recommended movies for a user
-# from flask import Flask, jsonify
-
-# app = Flask(__name__)
-
-# @app.route('/user/<user_id>/recommended_movies', methods=['GET'])
-# def recommend_movies(user_id):
-#     try:
-#         # Convert user_id to ObjectId for MongoDB
-#         user_oid = ObjectId("671851c4fcc86bd7fdca568f")
-#         recommended_movies = get_recommendations(user_oid)
-        
-#         # Format the recommended movies for the response
-#         recommended_movies_list = [
-#             {
-#                 "title": movie["title"],
-#                 "genres": movie["genres"],
-#                 "poster_path": movie["poster_path"],
-#                 "release_date": movie["release_date"],
-#                 "runtime": movie["runtime"],
-#                 "vote_average": movie["vote_average"]
-#             }
-#             for movie in recommended_movies
-#         ]
-        
-#         return jsonify({
-#             "status": "success",
-#             "recommended_movies": recommended_movies_list
-#         })
-    
-#     except Exception as e:
-#         return jsonify({"status": "error", "message": str(e)}), 500
-
-# if __name__ == '__main__':
-#     app.run(debug=True)
+        # print(recommended_movies_list)
+        return(recommended_movies_list)
+    except Exception as e:
+        print("Error ---- " , e)

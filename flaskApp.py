@@ -5,6 +5,7 @@ import face_recognition
 import pymongo
 from bson.binary import Binary
 import pickle
+import random
 from datetime import datetime
 from flask_cors import CORS
 import bcrypt
@@ -13,6 +14,7 @@ from werkzeug.security import check_password_hash
 from scripts.getRecommendatedMovies import main  # Import main from your script
 from scripts.getReviewRecommendation import generate_recommendations
 from scripts.getAprioriRecommendation import generate_apriori_recommendations
+
 
 app = Flask(__name__)
 CORS(app)
@@ -254,9 +256,13 @@ def get_popular_now_playing_movies():
         # and sort them in descending order based on vote_average
         popular_movies = list(movie_collection.find({
             "now_playing": True,
-            "vote_average": {"$gt": 6}
-        }).sort("vote_average", -1))  # Sort by vote_average in descending order
+            "vote_average": {"$gt": 7}
+        })
+        # .sort("vote_average", -1)
+        )  # Sort by vote_average in descending order
 
+        random.shuffle(popular_movies)
+        
         movie_list = []
         for movie in popular_movies:
             # Append relevant fields to the movie list
@@ -536,9 +542,13 @@ def book_seats():
         # Find the show within the document that matches the specified datetime
         for show in show_data["shows"]:
             if show["datetime"] == show_datetime:
+                # Check if any of the requested seats are already booked
+                if any(seat in show.get("booked_seats", []) for seat in booked_seats):
+                    return jsonify({"status": None, "msg": "Some seats are already booked"}), 409
+                
                 # Add new booked seats to the existing list of booked seats
                 show["booked_seats"] = list(set(show.get("booked_seats", []) + booked_seats))
-                show["remaining_seats"] -= len(booked_seats)
+                show["remaining_seats"] = show["capacity"] - len(show["booked_seats"])
                 break
         else:
             return jsonify({"status": None, "msg": "Show with the specified datetime not found"}), 404

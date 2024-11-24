@@ -1,5 +1,6 @@
 import requests
 from pymongo import MongoClient
+import random
 
 # MongoDB setup (replace with your MongoDB connection string)
 client = MongoClient("mongodb://localhost:27017/")
@@ -7,7 +8,7 @@ db = client["cinema_kiosk"]  # Replace with your database name
 movie_collection = db["moviesDB"]  # Replace with your collection name
 
 # TMDB API URL
-url = "https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=1"
+url = "https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=10"
 
 headers = {
     "accept": "application/json",
@@ -58,8 +59,24 @@ if response.status_code == 200:
         # Decode genre_ids into genre names and create a 'genres' list
         genre_ids = movie.get("genre_ids", [])
         movie["genres"] = [genre_dict[genre_id] for genre_id in genre_ids if genre_id in genre_dict]
-        
+        movie["runtime"] = random.randint(100, 130)
         # Insert the updated movie object into MongoDB
-        movie_collection.insert_one(movie)
+        # movie_collection.insert_one(movie)
+
+        try:
+            # print(movie)
+            result = movie_collection.update_one(
+                {"id": movie["id"]},  # filter/query to find existing movie
+                {"$set": movie},      # update/insert data
+                upsert=True           # create new document if not found
+            )
+            
+            if result.upserted_id:
+                print(f"Movie with ID {movie['id']} was inserted")
+            else:
+                print(f"Movie with ID {movie['id']} was updated")
+                
+        except Exception as e:
+            print(f"Error: {e}")
 else:
     print(f"Failed to fetch data. Status code: {response.status_code}")

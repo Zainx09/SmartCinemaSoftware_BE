@@ -1,0 +1,5 @@
+Genre,Avg Rec Score,Min Rec Score,Max Rec Score,Total Watches,Avg Rating
+Action,0.75,0.51,1.0,2935,4.46
+Drama,0.77,0.56,0.99,3327,4.65
+Fantasy,0.82,0.57,0.93,3193,4.09
+Sci-Fi,0.73,0.59,1.0,2079,4.07
